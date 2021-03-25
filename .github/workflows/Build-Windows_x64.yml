@@ -1,0 +1,102 @@
+name: Pre-submit tests
+
+on:
+  push:
+    branches-ignore:
+      - master
+      - pr/*
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platform(s) to execute on"
+        required: true
+        default: "Linux additional (hotspot only), Linux x64, Linux x86, Windows aarch64, Windows x64, macOS x64"
+
+jobs:
+  prerequisites:
+    name: Prerequisites
+    runs-on: "ubuntu-20.04"
+    outputs:
+      should_run: ${{ steps.check_submit.outputs.should_run }}
+      bundle_id: ${{ steps.check_bundle_id.outputs.bundle_id }}
+      platform_linux_additional: ${{ steps.check_platforms.outputs.platform_linux_additional }}
+      platform_linux_x64: ${{ steps.check_platforms.outputs.platform_linux_x64 }}
+      platform_linux_x86: ${{ steps.check_platforms.outputs.platform_linux_x86 }}
+      platform_windows_aarch64: ${{ steps.check_platforms.outputs.platform_windows_aarch64 }}
+      platform_windows_x64: ${{ steps.check_platforms.outputs.platform_windows_x64 }}
+      platform_macos_x64: ${{ steps.check_platforms.outputs.platform_macos_x64 }}
+      dependencies: ${{ steps.check_deps.outputs.dependencies }}
+
+    steps:
+      - name: Check if submit tests should actually run depending on secrets and manual triggering
+        id: check_submit
+        run: echo "::set-output name=should_run::${{ github.event.inputs.platforms != '' || (!secrets.JDK_SUBMIT_FILTER || startsWith(github.ref, 'refs/heads/submit/')) }}"
+
+      - name: Check which platforms should be included
+        id: check_platforms
+        run: |
+          echo "::set-output name=platform_linux_additional::${{ contains(github.event.inputs.platforms, 'linux additional (hotspot only)') || (github.event.inputs.platforms == '' && (secrets.JDK_SUBMIT_PLATFORMS == '' || contains(secrets.JDK_SUBMIT_PLATFORMS, 'linux additional (hotspot only)'))) }}"
+          echo "::set-output name=platform_linux_x64::${{ contains(github.event.inputs.platforms, 'linux x64') || (github.event.inputs.platforms == '' && (secrets.JDK_SUBMIT_PLATFORMS == '' || contains(secrets.JDK_SUBMIT_PLATFORMS, 'linux x64'))) }}"
+          echo "::set-output name=platform_linux_x86::${{ contains(github.event.inputs.platforms, 'linux x86') || (github.event.inputs.platforms == '' && (secrets.JDK_SUBMIT_PLATFORMS == '' || contains(secrets.JDK_SUBMIT_PLATFORMS, 'linux x86'))) }}"
+          echo "::set-output name=platform_windows_aarch64::${{ contains(github.event.inputs.platforms, 'windows aarch64') || (github.event.inputs.platforms == '' && (secrets.JDK_SUBMIT_PLATFORMS == '' || contains(secrets.JDK_SUBMIT_PLATFORMS, 'windows aarch64'))) }}"
+          echo "::set-output name=platform_windows_x64::${{ contains(github.event.inputs.platforms, 'windows x64') || (github.event.inputs.platforms == '' && (secrets.JDK_SUBMIT_PLATFORMS == '' || contains(secrets.JDK_SUBMIT_PLATFORMS, 'windows x64'))) }}"
+          echo "::set-output name=platform_macos_x64::${{ contains(github.event.inputs.platforms, 'macos x64') || (github.event.inputs.platforms == '' && (secrets.JDK_SUBMIT_PLATFORMS == '' || contains(secrets.JDK_SUBMIT_PLATFORMS, 'macos x64'))) }}"
+        if: steps.check_submit.outputs.should_run != 'false'
+
+      - name: Determine unique bundle identifier
+        id: check_bundle_id
+        run: echo "::set-output name=bundle_id::${GITHUB_ACTOR}_${GITHUB_SHA:0:8}"
+        if: steps.check_submit.outputs.should_run != 'false'
+
+      - name: Checkout the source
+        uses: actions/checkout@v2
+        with:
+          path: jdk
+        if: steps.check_submit.outputs.should_run != 'false'
+
+      - name: Determine versions and locations to be used for dependencies
+        id: check_deps
+        run: "echo ::set-output name=dependencies::`cat make/conf/version-numbers.conf make/conf/test-dependencies | sed -e '1i {' -e 's/#.*//g' -e 's/\"//g' -e 's/\\(.*\\)=\\(.*\\)/\"\\1\": \"\\2\",/g' -e '$s/,\\s\\{0,\\}$/\\}/'`"
+        working-directory: jdk
+        if: steps.check_submit.outputs.should_run != 'false'
+
+      - name: Print extracted dependencies to the log
+        run: "echo '${{ steps.check_deps.outputs.dependencies }}'"
+        if: steps.check_submit.outputs.should_run != 'false'
+
+      - name: Determine the jtreg ref to checkout
+        run: "echo JTREG_REF=jtreg${{ fromJson(steps.check_deps.outputs.dependencies).JTREG_VERSION }}-${{ fromJson(steps.check_deps.outputs.dependencies).JTREG_BUILD }} >> $GITHUB_ENV"
+        if: steps.check_submit.outputs.should_run != 'false'
+
+      - name: Check if a jtreg image is present in the cache
+        id: jtreg
+        uses: actions/cache@v2
+        with:
+          path: ~/jtreg/
+          key: jtreg-${{ env.JTREG_REF }}-v1
+        if: steps.check_submit.outputs.should_run != 'false'
+
+      - name: Checkout the jtreg source
+        uses: actions/checkout@v2
+        with:
+          repository: "openjdk/jtreg"
+          ref: ${{ env.JTREG_REF }}
+          path: jtreg
+        if: steps.check_submit.outputs.should_run != 'false' && steps.jtreg.outputs.cache-hit != 'true'
+
+      - name: Build jtreg
+        run: sh make/build-all.sh ${JAVA_HOME_8_X64}
+        working-directory: jtreg
+        if: steps.check_submit.outputs.should_run != 'false' && steps.jtreg.outputs.cache-hit != 'true'
+
+      - name: Move jtreg image to destination folder
+        run: mv build/images/jtreg ~/
+        working-directory: jtreg
+        if: steps.check_submit.outputs.should_run != 'false' && steps.jtreg.outputs.cache-hit != 'true'
+
+      - name: Store jtreg for use by later steps
+        uses: actions/upload-artifact@v2
+        with:
+          name: transient_jtreg_${{ steps.check_bundle_id.outputs.bundle_id }}
+          path: ~/jtreg/
+        if: steps.check_submit.outputs.should_run != 'false'
