@@ -106,22 +106,22 @@ jobs:
       fail-fast: false
       matrix:
         flavor:
-          - hs x64 build only
-          - hs x64 zero build only
-          - hs x64 minimal build only
-          - hs x64 optimized build only
+          - hs x86 build only
+          - hs x86 zero build only
+          - hs x86 minimal build only
+          - hs x86 optimized build only
           - hs aarch64 build only
           - hs arm build only
           - hs s390x build only
           - hs ppc64le build only
         include:
-          - flavor: hs x64 build only
+          - flavor: hs x86 build only
             flags: --enable-debug --disable-precompiled-headers
-          - flavor: hs x64 zero build only
+          - flavor: hs x86 zero build only
             flags: --enable-debug --disable-precompiled-headers --with-jvm-variants=zero
-          - flavor: hs x64 minimal build only
+          - flavor: hs x86 minimal build only
             flags: --enable-debug --disable-precompiled-headers --with-jvm-variants=minimal
-          - flavor: hs x64 optimized build only
+          - flavor: hs x86 optimized build only
             flags: --with-debug-level=optimized --disable-precompiled-headers
           - flavor: hs aarch64 build only
             flags: --enable-debug --disable-precompiled-headers
