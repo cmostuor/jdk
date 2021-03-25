@@ -379,6 +379,10 @@ jobs:
           path: |
             jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin${{ matrix.artifact }}.tar.gz
             jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin-tests${{ matrix.artifact }}.tar.gz
+      
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: jdk/build/linux-x86/bundles/
 
   linux_x86_test:
     name: Linux x86
@@ -583,17 +587,17 @@ jobs:
           -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
           '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview'
 
-      - name: Delete transient artifacts
-        run: >
-          for url in `
-          curl -s -H 'Accept: application/json;api-version=6.0-preview'
-          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
-          '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview' |
-          jq -r -c '.value | map(select(.name|startswith("transient_"))) | .[].url'`; do
-          curl -s -H 'Accept: application/json;api-version=6.0-preview'
-          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
-          -X DELETE "${url}";
-          done
+#      - name: Delete transient artifacts
+#        run: >
+#          for url in `
+#          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+#          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+#          '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview' |
+#          jq -r -c '.value | map(select(.name|startswith("transient_"))) | .[].url'`; do
+#          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+#          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+#          -X DELETE "${url}";
+#          done
 
       - name: Fetch remaining artifacts (test results)
         uses: actions/download-artifact@v2
