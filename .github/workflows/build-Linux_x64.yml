@@ -1,4 +1,4 @@
-name: Pre-submit tests
+name: Build-Linux_x64
 
 on:
   push:
