@@ -1,0 +1,230 @@
+  linux_additional_build:
+    name: Linux additional
+    runs-on: "ubuntu-20.04"
+    needs:
+      - prerequisites
+      - linux_x86_build
+    if: needs.prerequisites.outputs.should_run != 'false' && needs.prerequisites.outputs.platform_linux_additional != 'false'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor:
+          - hs x86 build only
+          - hs x86 zero build only
+          - hs x86 minimal build only
+          - hs x86 optimized build only
+          - hs aarch64 build only
+          - hs arm build only
+          - hs s390x build only
+          - hs ppc64le build only
+        include:
+          - flavor: hs x86 build only
+            flags: --enable-debug --disable-precompiled-headers
+          - flavor: hs x86 zero build only
+            flags: --enable-debug --disable-precompiled-headers --with-jvm-variants=zero
+          - flavor: hs x86 minimal build only
+            flags: --enable-debug --disable-precompiled-headers --with-jvm-variants=minimal
+          - flavor: hs x86 optimized build only
+            flags: --with-debug-level=optimized --disable-precompiled-headers
+          - flavor: hs aarch64 build only
+            flags: --enable-debug --disable-precompiled-headers
+            debian-arch: arm64
+            gnu-arch: aarch64
+          - flavor: hs arm build only
+            flags: --enable-debug --disable-precompiled-headers
+            debian-arch: armhf
+            gnu-arch: arm
+            gnu-flavor: eabihf
+          - flavor: hs s390x build only
+            flags: --enable-debug --disable-precompiled-headers
+            debian-arch: s390x
+            gnu-arch: s390x
+          - flavor: hs ppc64le build only
+            flags: --enable-debug --disable-precompiled-headers
+            debian-arch: ppc64el
+            gnu-arch: powerpc64le
+
+    env:
+      JDK_VERSION: "${{ fromJson(needs.prerequisites.outputs.dependencies).DEFAULT_VERSION_FEATURE }}"
+      BOOT_JDK_VERSION: "${{ fromJson(needs.prerequisites.outputs.dependencies).BOOT_JDK_VERSION }}"
+      BOOT_JDK_FILENAME: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_FILENAME }}"
+      BOOT_JDK_URL: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_URL }}"
+      BOOT_JDK_SHA256: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_SHA256 }}"
+
+    steps:
+      - name: Checkout the source
+        uses: actions/checkout@v2
+        with:
+          path: jdk
+
+      - name: Restore boot JDK from cache
+        id: bootjdk
+        uses: actions/cache@v2
+        with:
+          path: ~/bootjdk/${{ env.BOOT_JDK_VERSION }}
+          key: bootjdk-${{ runner.os }}-${{ env.BOOT_JDK_VERSION }}-${{ env.BOOT_JDK_SHA256 }}-v1
+
+      - name: Download boot JDK
+        run: |
+          mkdir -p "${HOME}/bootjdk/${BOOT_JDK_VERSION}"
+          wget -O "${HOME}/bootjdk/${BOOT_JDK_FILENAME}" "${BOOT_JDK_URL}"
+          echo "${BOOT_JDK_SHA256} ${HOME}/bootjdk/${BOOT_JDK_FILENAME}" | sha256sum -c >/dev/null -
+          tar -xf "${HOME}/bootjdk/${BOOT_JDK_FILENAME}" -C "${HOME}/bootjdk/${BOOT_JDK_VERSION}"
+          mv "${HOME}/bootjdk/${BOOT_JDK_VERSION}/"*/* "${HOME}/bootjdk/${BOOT_JDK_VERSION}/"
+        if: steps.bootjdk.outputs.cache-hit != 'true'
+
+      - name: Restore build JDK
+        id: build_restore
+        uses: actions/download-artifact@v2
+        with:
+          name: transient_jdk-linux-x86_${{ needs.prerequisites.outputs.bundle_id }}
+          path: ~/jdk-linux-x86
+        continue-on-error: true
+
+      - name: Restore build JDK (retry)
+        uses: actions/download-artifact@v2
+        with:
+          name: transient_jdk-linux-x86_${{ needs.prerequisites.outputs.bundle_id }}
+          path: ~/jdk-linux-x86
+        if: steps.build_restore.outcome == 'failure'
+
+      - name: Unpack build JDK
+        run: |
+          mkdir -p "${HOME}/jdk-linux-x86/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin"
+          tar -xf "${HOME}/jdk-linux-x86/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin.tar.gz" -C "${HOME}/jdk-linux-x86/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin"
+      - name: Find root of build JDK image dir
+        run: |
+          build_jdk_root=`find ${HOME}/jdk-linux-x86/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin -name release -type f`
+          echo "build_jdk_root=`dirname ${build_jdk_root}`" >> $GITHUB_ENV
+      - name: Update apt
+        run: sudo apt-get update
+
+      - name: Install native host dependencies
+        run: |
+          sudo apt-get install gcc-10=10.2.0-5ubuntu1~20.04 g++-10=10.2.0-5ubuntu1~20.04 libxrandr-dev libxtst-dev libcups2-dev libasound2-dev
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 --slave /usr/bin/g++ g++ /usr/bin/g++-10
+        if: matrix.debian-arch == ''
+
+      - name: Install cross-compilation host dependencies
+        run: sudo apt-get install gcc-10-${{ matrix.gnu-arch }}-linux-gnu${{ matrix.gnu-flavor}}=10.2.0-5ubuntu1~20.04cross1 g++-10-${{ matrix.gnu-arch }}-linux-gnu${{ matrix.gnu-flavor}}=10.2.0-5ubuntu1~20.04cross1
+        if: matrix.debian-arch != ''
+
+      - name: Cache sysroot
+        id: cache-sysroot
+        uses: actions/cache@v2
+        with:
+          path: ~/sysroot-${{ matrix.debian-arch }}/
+          key: sysroot-${{ matrix.debian-arch }}-${{ hashFiles('jdk/.github/workflows/build-Linux_x86.yml') }}
+        if: matrix.debian-arch != ''
+
+      - name: Install sysroot host dependencies
+        run: sudo apt-get install debootstrap qemu-user-static
+        if: matrix.debian-arch != '' && steps.cache-sysroot.outputs.cache-hit != 'true'
+
+      - name: Create sysroot
+        run: >
+          sudo qemu-debootstrap
+          --arch=${{ matrix.debian-arch }}
+          --verbose
+          --include=fakeroot,symlinks,build-essential,libx11-dev,libxext-dev,libxrender-dev,libxrandr-dev,libxtst-dev,libxt-dev,libcups2-dev,libfontconfig1-dev,libasound2-dev,libfreetype6-dev,libpng-dev
+          --resolve-deps
+          buster
+          ~/sysroot-${{ matrix.debian-arch }}
+          http://httpredir.debian.org/debian/
+        if: matrix.debian-arch != '' && steps.cache-sysroot.outputs.cache-hit != 'true'
+
+      - name: Prepare sysroot for caching
+        run: |
+          sudo chroot ~/sysroot-${{ matrix.debian-arch }} symlinks -cr .
+          sudo chown ${USER} -R ~/sysroot-${{ matrix.debian-arch }}
+          rm -rf ~/sysroot-${{ matrix.debian-arch }}/{dev,proc,run,sys}
+        if: matrix.debian-arch != '' && steps.cache-sysroot.outputs.cache-hit != 'true'
+
+      - name: Configure cross compiler
+        run: |
+          echo "CC=${{ matrix.gnu-arch }}-linux-gnu${{ matrix.gnu-flavor}}-gcc-10" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.gnu-arch }}-linux-gnu${{ matrix.gnu-flavor}}-g++-10" >> $GITHUB_ENV
+        if: matrix.debian-arch != ''
+
+      - name: Configure cross specific flags
+        run: >
+          echo "cross_flags=
+          --openjdk-target=${{ matrix.gnu-arch }}-linux-gnu${{ matrix.gnu-flavor}}
+          --with-sysroot=${HOME}/sysroot-${{ matrix.debian-arch }}/
+          " >> $GITHUB_ENV
+        if: matrix.debian-arch != ''
+
+      - name: Configure
+        run: >
+          bash configure
+          --with-conf-name=linux-${{ matrix.gnu-arch }}-hotspot
+          ${{ matrix.flags }}
+          ${{ env.cross_flags }}
+          --with-version-opt=${GITHUB_ACTOR}-${GITHUB_SHA}
+          --with-version-build=0
+          --with-boot-jdk=${HOME}/bootjdk/${BOOT_JDK_VERSION}
+          --with-build-jdk=${{ env.build_jdk_root }}
+          --with-default-make-target="hotspot"
+          --with-zlib=system
+        working-directory: jdk
+
+      - name: Build
+        run: make CONF_NAME=linux-${{ matrix.gnu-arch }}-hotspot
+        working-directory: jdk
+        
+artifacts:
+    name: Post-process artifacts
+    runs-on: "ubuntu-20.04"
+    if: always()
+    continue-on-error: true
+    needs:
+      - prerequisites
+      - linux_additional_build
+      - linux_x86_test
+
+    steps:
+      - name: Determine current artifacts endpoint
+        id: actions_runtime
+        uses: actions/github-script@v3
+        with:
+          script: "return { url: process.env['ACTIONS_RUNTIME_URL'], token: process.env['ACTIONS_RUNTIME_TOKEN'] }"
+
+      - name: Display current artifacts
+        run: >
+          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+          '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview'
+#      - name: Delete transient artifacts
+#        run: >
+#          for url in `
+#          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+#          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+#          '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview' |
+#          jq -r -c '.value | map(select(.name|startswith("transient_"))) | .[].url'`; do
+#          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+#          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+#          -X DELETE "${url}";
+#          done
+
+      - name: Fetch remaining artifacts (test results)
+        uses: actions/download-artifact@v2
+        with:
+          path: test-results
+
+      - name: Delete remaining artifacts
+        run: >
+          for url in `
+          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+          '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview' |
+          jq -r -c '.value | .[].url'`; do
+          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+          -X DELETE "${url}";
+          done
+      - name: Upload a combined test results artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: test-results_${{ needs.prerequisites.outputs.bundle_id }}
+          path: test-results
