@@ -176,6 +176,9 @@ jobs:
           path: ~/jdk-linux-x86
         continue-on-error: true
 
+      - name: Make Dir
+        run: mkdir ~/jdk-linux-x86
+
       - name: Restore build JDK (retry)
         uses: actions/download-artifact@v2
         with:
