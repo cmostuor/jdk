@@ -280,12 +280,26 @@ jobs:
           .
         continue-on-error: true
         
-      - name: Upload to release
-        uses: JasonEtco/upload-to-release@master
-        with:
-          args: jdk_linux-${{ matrix.gnu-arch }}_additional_${{ matrix.artifact }}_${{ needs.prerequisites.outputs.bundle_id }}.zip
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Upload Release Asset
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: "$HOME/jdk_linux-${{ matrix.gnu-arch }}_additional_${{ matrix.artifact }}_${{ needs.prerequisites.outputs.bundle_id }}.zip"
+          asset_name: jdk_linux-${{ matrix.gnu-arch }}_additional_${{ matrix.artifact }}_${{ needs.prerequisites.outputs.bundle_id }}.zip
+          asset_content_type: application/zip
 
   linux_x86_build:
     name: Linux x86
@@ -400,19 +414,38 @@ jobs:
         run: ls -R
         working-directory: jdk/build/linux-x86/bundles/
         
-      - name: product-bundles Upload to release
-        uses: JasonEtco/upload-to-release@master
-        with:
-          args: jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin${{ matrix.artifact }}.tar.gz application/octet-stream
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
           
-      - name: test-bundles Upload to release
-        uses: JasonEtco/upload-to-release@master
-        with:
-          args: jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin-tests${{ matrix.artifact }}.tar.gz application/octet-stream
+      - name: product-bundles Upload to release
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin${{ matrix.artifact }}.tar.gz
+          asset_name: jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin${{ matrix.artifact }}.tar.gz
+          asset_content_type: application/octet-stream
+
+      - name: test-bundles Upload to release
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin-tests${{ matrix.artifact }}.tar.gz
+          asset_name: jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin-tests${{ matrix.artifact }}.tar.gz
+          asset_content_type: application/octet-stream
 
   linux_x86_test:
     name: Linux x86
@@ -594,19 +627,38 @@ jobs:
           path: ~/linux-x86${{ matrix.artifact }}_testsupport_${{ env.logsuffix }}.zip
         continue-on-error: true
         
-      - name: Persist test results Upload to release
-        uses: JasonEtco/upload-to-release@master
-        with:
-          args: ~/linux-x86${{ matrix.artifact }}_testresults_${{ env.logsuffix }}.zip application/octet-stream
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          
+      - name: Persist test results Upload to release
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: ~/linux-x86${{ matrix.artifact }}_testresults_${{ env.logsuffix }}.zip 
+          asset_name: linux-x86${{ matrix.artifact }}_testresults_${{ env.logsuffix }}.zip 
+          asset_content_type: application/octet-stream
         
       - name: Persist test outputs Upload to release
-        uses: JasonEtco/upload-to-release@master
-        with:
-          args: ~/linux-x86${{ matrix.artifact }}_testsupport_${{ env.logsuffix }}.zip application/octet-stream
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: ~/linux-x86${{ matrix.artifact }}_testsupport_${{ env.logsuffix }}.zip 
+          asset_name: linux-x86${{ matrix.artifact }}_testsupport_${{ env.logsuffix }}.zip
+          asset_content_type: application/octet-stream
 
   artifacts:
     name: Post-process artifacts
