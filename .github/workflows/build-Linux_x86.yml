@@ -418,6 +418,7 @@ jobs:
         
       - name: Create Release
         id: create_release
+        if: steps.prepare_release.outputs.tag_name && matrix.artifact != "-debug"
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -428,7 +429,8 @@ jobs:
           prerelease: false
           
       - name: product-bundles Upload to release
-        id: product-bundles-upload-release-asset 
+        id: product-bundles-upload-release-asset
+        if: steps.create_release.outputs.upload_url
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -439,7 +441,8 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: test-bundles Upload to release
-        id: test-bundles-upload-release-asset 
+        id: test-bundles-upload-release-asset
+        if: steps.create_release.outputs.upload_url
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
