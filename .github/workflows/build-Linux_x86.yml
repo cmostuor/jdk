@@ -270,6 +270,22 @@ jobs:
       - name: Build
         run: make CONF_NAME=linux-${{ matrix.gnu-arch }}-hotspot
         working-directory: jdk
+        
+      - name: Package test results
+        if: always()
+        working-directory: jdk
+        run: >
+          zip -r9
+          "$HOME/jdk_linux-${{ matrix.gnu-arch }}_additional_${{ matrix.artifact }}_${{ needs.prerequisites.outputs.bundle_id }}.zip"
+          .
+        continue-on-error: true
+        
+      - name: Upload to release
+        uses: JasonEtco/upload-to-release@master
+        with:
+          args: jdk_linux-${{ matrix.gnu-arch }}_additional_${{ matrix.artifact }}_${{ needs.prerequisites.outputs.bundle_id }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   linux_x86_build:
     name: Linux x86
@@ -383,6 +399,20 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R
         working-directory: jdk/build/linux-x86/bundles/
+        
+      - name: product-bundles Upload to release
+        uses: JasonEtco/upload-to-release@master
+        with:
+          args: jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin${{ matrix.artifact }}.tar.gz application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: test-bundles Upload to release
+        uses: JasonEtco/upload-to-release@master
+        with:
+          args: jdk/build/linux-x86/bundles/jdk-${{ env.JDK_VERSION }}-internal+0_linux-x86_bin-tests${{ matrix.artifact }}.tar.gz application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   linux_x86_test:
     name: Linux x86
@@ -563,6 +593,20 @@ jobs:
         with:
           path: ~/linux-x86${{ matrix.artifact }}_testsupport_${{ env.logsuffix }}.zip
         continue-on-error: true
+        
+      - name: Persist test results Upload to release
+        uses: JasonEtco/upload-to-release@master
+        with:
+          args: ~/linux-x86${{ matrix.artifact }}_testresults_${{ env.logsuffix }}.zip application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Persist test outputs Upload to release
+        uses: JasonEtco/upload-to-release@master
+        with:
+          args: ~/linux-x86${{ matrix.artifact }}_testsupport_${{ env.logsuffix }}.zip application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   artifacts:
     name: Post-process artifacts
@@ -587,17 +631,17 @@ jobs:
           -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
           '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview'
 
-#      - name: Delete transient artifacts
-#        run: >
-#          for url in `
-#          curl -s -H 'Accept: application/json;api-version=6.0-preview'
-#          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
-#          '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview' |
-#          jq -r -c '.value | map(select(.name|startswith("transient_"))) | .[].url'`; do
-#          curl -s -H 'Accept: application/json;api-version=6.0-preview'
-#          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
-#          -X DELETE "${url}";
-#          done
+      - name: Delete transient artifacts
+        run: >
+          for url in `
+          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+          '${{ fromJson(steps.actions_runtime.outputs.result).url }}_apis/pipelines/workflows/${{ github.run_id }}/artifacts?api-version=6.0-preview' |
+          jq -r -c '.value | map(select(.name|startswith("transient_"))) | .[].url'`; do
+          curl -s -H 'Accept: application/json;api-version=6.0-preview'
+          -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
+          -X DELETE "${url}";
+          done
 
       - name: Fetch remaining artifacts (test results)
         uses: actions/download-artifact@v2
