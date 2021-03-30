@@ -92,6 +92,18 @@ jobs:
           name: transient_jtreg_${{ steps.check_bundle_id.outputs.bundle_id }}
           path: ~/jtreg/
         if: steps.check_submit.outputs.should_run != 'false'
+        
+      - name: Create Release
+        id: create_release
+        if: steps.prepare_release.outputs.tag_name
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
 
 
   linux_additional_build:
@@ -280,17 +292,6 @@ jobs:
           .
         continue-on-error: true
         
-      - name: Create Release
-        id: create_release
-        if: steps.prepare_release.outputs.tag_name
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
       - name: Upload Release Asset
         id: additional-upload-release-asset
         if: steps.create_release.outputs.upload_url
@@ -415,18 +416,6 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R
         working-directory: jdk/build/linux-x86/bundles/
-        
-      - name: Create Release
-        id: create_release
-        if: steps.prepare_release.outputs.tag_name && matrix.artifact != '-debug'
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
           
       - name: product-bundles Upload to release
         id: product-bundles-upload-release-asset
@@ -631,18 +620,6 @@ jobs:
         with:
           path: ~/linux-x86${{ matrix.artifact }}_testsupport_${{ env.logsuffix }}.zip
         continue-on-error: true
-        
-      - name: Create Release
-        id: create_release
-        if: steps.prepare_release.outputs.tag_name
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
           
       - name: Persist test results Upload to release
         id: testresults-upload-release-asset
@@ -673,10 +650,10 @@ jobs:
     runs-on: "ubuntu-20.04"
     if: always()
     continue-on-error: true
-    needs:
-      - prerequisites
-      - linux_additional_build
-      - linux_x86_test
+#    needs:
+#      - prerequisites
+#      - linux_additional_build
+#      - linux_x86_test
 
     steps:
       - name: Determine current artifacts endpoint
@@ -719,9 +696,25 @@ jobs:
           -H 'Authorization: Bearer ${{ fromJson(steps.actions_runtime.outputs.result).token }}'
           -X DELETE "${url}";
           done
+          
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: test-results
 
       - name: Upload a combined test results artifact
         uses: actions/upload-artifact@v2
         with:
           name: test-results_${{ needs.prerequisites.outputs.bundle_id }}
           path: test-results
+          
+      - name: Upload a combined test results artifact to release
+        id: test-results_upload-release-asset
+        if: steps.create_release.outputs.upload_url
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: ~/linux-x86${{ matrix.artifact }}_testresults_${{ env.logsuffix }}.zip 
+          asset_name: test-results_${{ needs.prerequisites.outputs.bundle_id }} 
+          asset_content_type: application/octet-stream
